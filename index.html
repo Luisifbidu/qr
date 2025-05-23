@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QR Code Scanner</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        .scanner-container {
+            position: relative;
+            width: 100%;
+            max-width: 500px;
+            margin: 0 auto;
+            overflow: hidden;
+            border-radius: 12px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+        }
+        
+        #scanner {
+            width: 100%;
+            display: block;
+        }
+        
+        .scanner-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(180deg, rgba(0,0,0,0.3) 0%, rgba(0,0,0,0) 50%, rgba(0,0,0,0.3) 100%);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        .scanner-frame {
+            width: 70%;
+            height: 70%;
+            border: 3px solid rgba(255, 255, 255, 0.8);
+            border-radius: 8px;
+            position: relative;
+            box-shadow: 0 0 0 10000px rgba(0, 0, 0, 0.5);
+        }
+        
+        .scanner-line {
+            position: absolute;
+            width: 100%;
+            height: 4px;
+            background: rgba(59, 130, 246, 0.8);
+            box-shadow: 0 0 10px rgba(59, 130, 246, 0.6);
+            animation: scan 2s infinite linear;
+            border-radius: 4px;
+        }
+        
+        @keyframes scan {
+            0% { top: 0; }
+            100% { top: 100%; }
+        }
+        
+        .result-card {
+            transition: all 0.3s ease;
+            transform-origin: top;
+        }
+        
+        .result-card.show {
+            transform: scaleY(1);
+            opacity: 1;
+        }
+        
+        .result-card.hide {
+            transform: scaleY(0);
+            opacity: 0;
+            height: 0;
+            overflow: hidden;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen">
+    <div class="container mx-auto px-4 py-8">
+        <div class="text-center mb-8">
+            <h1 class="text-3xl font-bold text-gray-800 mb-2">QR Code Scanner</h1>
+            <p class="text-gray-600">Aponte a câmera para um QR Code para escanear</p>
+        </div>
+        
+        <div class="scanner-container bg-black mb-8">
+            <video id="scanner" playsinline></video>
+            <div class="scanner-overlay">
+                <div class="scanner-frame">
+                    <div class="scanner-line"></div>
+                </div>
+                <p class="text-white mt-4 text-sm opacity-80">Posicione o QR Code dentro do quadro</p>
+            </div>
+        </div>
+        
+        <div class="result-card hide bg-white rounded-xl shadow-md p-6 mb-8 transition-all duration-300" id="resultCard">
+            <h2 class="text-xl font-semibold text-gray-800 mb-4">Resultado da Busca</h2>
+            <div class="flex items-center mb-4">
+                <div class="bg-blue-100 p-3 rounded-full mr-4">
+                    <i class="fas fa-qrcode text-blue-500 text-xl"></i>
+                </div>
+                <div>
+                    <p class="text-gray-600 text-sm">Código escaneado:</p>
+                    <p class="font-medium text-gray-800" id="scannedCode">Nenhum código escaneado</p>
+                </div>
+            </div>
+            
+            <div class="border-t border-gray-200 pt-4">
+                <h3 class="text-lg font-medium text-gray-800 mb-2">Informações do Banco de Dados</h3>
+                <div class="bg-gray-50 p-4 rounded-lg">
+                    <div class="grid grid-cols-2 gap-4">
+
+                        <div>
+                            <p class="text-gray-600 text-sm">ID do Item</p>
+                            <p class="font-medium" id="itemId">-</p>
+                        </div>
+                        <div>
+                            <p class="text-gray-600 text-sm">Nome</p>
+                            <p class="font-medium" id="itemName">-</p>
+                        </div>
+                        <div>
+                            <p class="text-gray-600 text-sm">Categoria</p>
+                            <p class="font-medium" id="itemCategory">-</p>
+                        </div>
+                        <div>
+                            <p class="text-gray-600 text-sm">Status</p>
+                            <p class="font-medium" id="itemStatus">-</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="flex justify-center gap-4">
+            <button id="startBtn" class="bg-blue-500 hover:bg-blue-600 text-white px-6 py-3 rounded-lg font-medium flex items-center">
+                <i class="fas fa-play mr-2"></i> Iniciar Scanner
+            </button>
+            <button id="stopBtn" class="bg-gray-500 hover:bg-gray-600 text-white px-6 py-3 rounded-lg font-medium flex items-center" disabled>
+                <i class="fas fa-stop mr-2"></i> Parar Scanner
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // Variáveis globais
+        let scannedData = null;
+        let videoStream = null;
+        let scanningInterval = null;
+        
+        // Elementos DOM
+        const video = document.getElementById('scanner');
+        const startBtn = document.getElementById('startBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const resultCard = document.getElementById('resultCard');
+        const scannedCodeElement = document.getElementById('scannedCode');
+        const itemIdElement = document.getElementById('itemId');
+        const itemNameElement = document.getElementById('itemName');
+        const itemCategoryElement = document.getElementById('itemCategory');
+        const itemStatusElement = document.getElementById('itemStatus');
+        
+        // Simulação de banco de dados
+        const mockDatabase = {
+            "PROD12345": { id: "P001", name: "Smartphone X", category: "Eletrônicos", status: "Disponível" },
+            "PROD67890": { id: "P002", name: "Notebook Pro", category: "Eletrônicos", status: "Reservado" },
+            "PROD11223": { id: "P003", name: "Fone Bluetooth", category: "Acessórios", status: "Disponível" },
+            "PROD44556": { id: "P004", name: "Tablet Lite", category: "Eletrônicos", status: "Indisponível" },
+            "PROD77889": { id: "P005", name: "Mouse Sem Fio", category: "Acessórios", status: "Disponível" }
+        };
+        
+        // Iniciar scanner
+        startBtn.addEventListener('click', async () => {
+            try {
+                // Solicitar acesso à câmera
+                videoStream = await navigator.mediaDevices.getUserMedia({
+                    video: { 
+                        facingMode: 'environment',
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 }
+                    }
+                });
+                
+                video.srcObject = videoStream;
+                video.play();
+                
+                // Ativar botão de parar e desativar botão de iniciar
+                startBtn.disabled = true;
+                stopBtn.disabled = false;
+                
+                // Iniciar detecção de QR code
+                scanningInterval = setInterval(scanQRCode, 100);
+                
+                // Mostrar mensagem de sucesso
+                showToast('Scanner iniciado com sucesso!', 'success');
+            } catch (err) {
+                console.error('Erro ao acessar a câmera:', err);
+                showToast('Erro ao acessar a câmera. Verifique as permissões.', 'error');
+            }
+        });
+        
+        // Parar scanner
+        stopBtn.addEventListener('click', () => {
+            if (videoStream) {
+                videoStream.getTracks().forEach(track => track.stop());
+                video.srcObject = null;
+            }
+            
+            if (scanningInterval) {
+                clearInterval(scanningInterval);
+            }
+            
+            startBtn.disabled = false;
+            stopBtn.disabled = true;
+            
+            showToast('Scanner parado.', 'info');
+        });
+        
+        // Função para escanear QR code
+        function scanQRCode() {
+            if (video.readyState === video.HAVE_ENOUGH_DATA) {
+                const canvas = document.createElement('canvas');
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                
+                const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                const code = jsQR(imageData.data, imageData.width, imageData.height, {
+                    inversionAttempts: 'dontInvert',
+                });
+                
+                if (code) {
+                    // QR code detectado
+                    scannedData = code.data;
+                    scannedCodeElement.textContent = scannedData;
+                    
+                    // Buscar no banco de dados simulado
+                    const dbResult = mockDatabase[scannedData] || {
+                        id: "Não encontrado",
+                        name: "Item não cadastrado",
+                        category: "-",
+                        status: "-"
+                    };
+                    
+                    // Atualizar UI com os dados
+                    itemIdElement.textContent = dbResult.id;
+                    itemNameElement.textContent = dbResult.name;
+                    itemCategoryElement.textContent = dbResult.category;
+                    itemStatusElement.textContent = dbResult.status;
+                    
+                    // Mostrar o card de resultados
+                    resultCard.classList.remove('hide');
+                    resultCard.classList.add('show');
+                    
+                    // Parar o scanner após a detecção (opcional)
+                    // stopBtn.click();
+                    
+                    // Mostrar mensagem de sucesso
+                    showToast('QR Code detectado com sucesso!', 'success');
+                }
+            }
+        }
+        
+        // Função para mostrar notificação/toast
+        function showToast(message, type) {
+            // Criar elemento toast
+            const toast = document.createElement('div');
+            toast.className = `fixed bottom-4 right-4 px-6 py-3 rounded-lg shadow-lg text-white font-medium flex items-center ${
+                type === 'success' ? 'bg-green-500' : 
+                type === 'error' ? 'bg-red-500' : 'bg-blue-500'
+            }`;
+            
+            // Ícone baseado no tipo
+            const icon = type === 'success' ? 'fa-check-circle' : 
+                         type === 'error' ? 'fa-exclamation-circle' : 'fa-info-circle';
+            
+            toast.innerHTML = `
+                <i class="fas ${icon} mr-2"></i>
+                ${message}
+            `;
+            
+            // Adicionar ao body
+            document.body.appendChild(toast);
+            
+            // Remover após 3 segundos
+            setTimeout(() => {
+                toast.classList.add('opacity-0', 'transition-opacity', 'duration-300');
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+        
+        // Verificar se o navegador suporta a API de mídia
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            showToast('Seu navegador não suporta acesso à câmera ou está em um ambiente inseguro (HTTP).', 'error');
+            startBtn.disabled = true;
+        }
+    </script>
+</body>
+</html>
